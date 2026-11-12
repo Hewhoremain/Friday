@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#07101c">
+<title>Friday</title>
+<style>
+  :root{
+    --bg:#07101c; --bg2:#0d1a2b; --fg:#dbe8f5; --muted:#7f93aa;
+    --accent:#4fd8ff; --listen:#5dffb0; --think:#ffc857; --err:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:radial-gradient(ellipse at 50% 35%,var(--bg2),var(--bg) 70%);color:var(--fg);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+  body.listening{--accent:var(--listen)}
+  body.thinking{--accent:var(--think)}
+  body.error{--accent:var(--err)}
+  #app{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:14px}
+  #face{width:min(78vw,52vh,420px);height:auto;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:filter .3s}
+  #face .acc{fill:var(--accent);transition:fill .4s}
+  #face .ring{stroke:var(--accent);fill:none;transition:stroke .4s}
+  body.sleeping #face{filter:brightness(.55)}
+  #status{color:var(--muted);font-size:15px;min-height:20px;text-align:center}
+  #caption{max-width:640px;width:100%;min-height:72px;max-height:22vh;overflow:auto;text-align:center;font-size:17px;line-height:1.45}
+  #caption .you{color:var(--muted);font-size:14px;display:block;margin-bottom:6px}
+  #textform{display:flex;gap:8px;width:100%;max-width:520px}
+  #textin{flex:1;background:#ffffff10;border:1px solid #ffffff22;color:var(--fg);border-radius:12px;padding:12px 14px;font-size:16px}
+  button{background:#ffffff14;border:1px solid #ffffff26;color:var(--fg);border-radius:12px;padding:10px 14px;font-size:15px;cursor:pointer}
+  #gear{position:fixed;top:max(14px,env(safe-area-inset-top));right:14px;font-size:20px;padding:8px 12px}
+  #cam{position:fixed;width:1px;height:1px;opacity:0;pointer-events:none}
+  #start{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+    background:#07101cee;font-size:20px;z-index:5;cursor:pointer;text-align:center;padding:24px}
+  #start small{color:var(--muted);font-size:14px}
+  dialog{background:var(--bg2);color:var(--fg);border:1px solid #ffffff22;border-radius:16px;width:min(92vw,440px);padding:20px}
+  dialog::backdrop{background:#000a}
+  dialog h2{margin:0 0 12px;font-size:18px}
+  dialog label{display:block;font-size:13px;color:var(--muted);margin:10px 0}
+  dialog input:not([type=checkbox]),dialog select{display:block;width:100%;margin-top:4px;background:#ffffff10;border:1px solid #ffffff22;
+    color:var(--fg);border-radius:10px;padding:10px;font-size:15px}
+  dialog select option{background:var(--bg2)}
+  dialog .row{display:flex;align-items:center;gap:8px;color:var(--fg);font-size:15px}
+  dialog .btns{display:flex;justify-content:space-between;gap:8px;margin-top:16px}
+  dialog .hint{font-size:12px;color:var(--muted);margin-top:8px}
+</style>
+</head>
+<body class="idle">
+<div id="app">
+  <svg id="face" viewBox="0 0 300 300" role="button" aria-label="Talk to assistant">
+    <defs>
+      <radialGradient id="g" cx="50%" cy="42%" r="62%">
+        <stop offset="0%" stop-color="#1c3954"/><stop offset="100%" stop-color="#091320"/>
+      </radialGradient>
+      <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="4" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <circle id="ring" class="ring" cx="150" cy="150" r="138" stroke-width="3" opacity=".55"/>
+    <circle id="ring2" class="ring" cx="150" cy="150" r="128" stroke-width="1.5" stroke-dasharray="6 10" opacity=".4"/>
+    <circle cx="150" cy="150" r="118" fill="url(#g)"/>
+    <g filter="url(#glow)">
+      <ellipse id="eyeL" class="acc" cx="112" cy="135" rx="15" ry="22"/>
+      <ellipse id="eyeR" class="acc" cx="188" cy="135" rx="15" ry="22"/>
+      <path id="mouth" class="acc" d=""/>
+    </g>
+  </svg>
+  <div id="status"></div>
+  <div id="caption"></div>
+  <form id="textform" autocomplete="off">
+    <input id="textin" placeholder="Or type here…">
+    <button>Send</button>
+  </form>
+</div>
+<button id="gear" aria-label="Settings">⚙</button>
+<video id="cam" playsinline muted></video>
+<div id="start">Tap to wake <span id="startName">Friday</span><small>Allow microphone (and camera) when asked</small></div>
+
+<dialog id="settings">
+  <form method="dialog">
+    <h2>Settings</h2>
+    <label>Claude API key<input id="s-key" type="password" placeholder="sk-ant-…" autocomplete="off"></label>
+    <label>Brain (model)
+      <select id="s-model">
+        <option value="claude-haiku-5-5">Haiku 5.5 — fastest replies</option>
+        <option value="claude-sonnet-5-5">Sonnet 5.5 — smarter</option>
+        <option value="claude-opus-5-5">Opus 5.5 — smartest, slower</option>
+      </select>
+    </label>
+    <label>Assistant name<input id="s-name"></label>
+    <label>Your name<input id="s-user" placeholder="So it can greet you"></label>
+    <label>Listening language
+      <select id="s-lang">
+        <option value="en-IN">English (India)</option><option value="en-US">English (US)</option>
+        <option value="en-GB">English (UK)</option><option value="hi-IN">Hindi</option>
+      </select>
+    </label>
+    <label>Voice<select id="s-voice"></select></label>
+    <label class="row"><input type="checkbox" id="s-wake"> Wait for wake word ("Hey Friday")</label>
+    <label class="row"><input type="checkbox" id="s-cam"> Use camera to notice me and start talking</label>
+    <div class="hint">Your key is stored only in this browser on this device.</div>
+    <div class="btns">
+      <button type="button" id="s-clear">Forget chat</button>
+      <button value="save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem('friday.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem('friday.' + k, JSON.stringify(v)); } catch {} }
+  };
+
+  const cfg = Object.assign({
+    apiKey: '', model: 'claude-haiku-5-5', name: 'Friday', user: '',
+    lang: 'en-IN', voice: '', wake: true, camera: true
+  }, store.get('cfg', {}));
+  let history = store.get('history', []);
+
+  // ---------- state ----------
+  let state = 'idle', started = false, busy = false, speaking = false, speakQueue = 0;
+  let followUpUntil = 0, abortCtl = null;
+  const FOLLOW_UP_MS = 8000, AWAY_MS = 60000, GREET_COOLDOWN_MS = 10 * 60000;
+
+  const statusEl = $('#status'), captionEl = $('#caption');
+  function setState(s) {
+    state = s;
+    document.body.className = s;
+    const n = cfg.name;
+    statusEl.textContent = {
+      idle: cfg.wake ? `Say "Hey ${n}" or tap me` : 'Just talk, or tap me',
+      sleeping: `Waiting for you… (or say "Hey ${n}")`,
+      listening: 'Listening…', thinking: 'Thinking…', speaking: '', error: statusEl.textContent
+    }[s] ?? '';
+  }
+  function baseState() { return cfg.camera && camOn && !present ? 'sleeping' : 'idle'; }
+  function showError(msg) { setState('error'); statusEl.textContent = msg; setTimeout(() => { if (state === 'error') setState(baseState()); }, 6000); }
+  function caption(you, reply) {
+    captionEl.innerHTML = '';
+    if (you) { const s = document.createElement('span'); s.className = 'you'; s.textContent = you; captionEl.appendChild(s); }
+    if (reply) captionEl.appendChild(document.createTextNode(reply));
+    captionEl.scrollTop = captionEl.scrollHeight;
+  }
+
+  // ---------- face animation ----------
+  const eyeL = $('#eyeL'), eyeR = $('#eyeR'), mouth = $('#mouth'), ring = $('#ring'), ring2 = $('#ring2');
+  let look = { x: 0, y: 0 }, lookTarget = { x: 0, y: 0 }, nextBlink = 2500, mouthOpen = 0, lastFaceAt = 0;
+  function frame(ts) {
+    const t = ts / 1000;
+    // wander gaze when nobody is tracked
+    if (performance.now() - lastFaceAt > 1500) {
+      lookTarget = state === 'thinking' ? { x: Math.sin(t * 1.7) * 0.6, y: -0.7 }
+        : { x: Math.sin(t * 0.37) * 0.35, y: Math.sin(t * 0.23) * 0.2 };
+    }
+    look.x += (lookTarget.x - look.x) * 0.08;
+    look.y += (lookTarget.y - look.y) * 0.08;
+
+    let blink = 1;
+    if (ts > nextBlink) {
+      const p = (ts - nextBlink) / 90;
+      if (p >= 2) nextBlink = ts + 2200 + Math.random() * 3800; else blink = Math.abs(1 - p);
+    }
+    const sleepy = state === 'sleeping' ? 0.22 : 1;
+    const ry = Math.max(1.5, 22 * blink * sleepy);
+    const bob = state === 'speaking' ? Math.sin(t * 7) * 1.5 : 0;
+    for (const [el, cx] of [[eyeL, 112], [eyeR, 188]]) {
+      el.setAttribute('cx', (cx + look.x * 12).toFixed(1));
+      el.setAttribute('cy', (135 + look.y * 9 + bob).toFixed(1));
+      el.setAttribute('ry', ry.toFixed(1));
+    }
+    const target = state === 'speaking' ? 0.2 + 0.8 * Math.abs(Math.sin(t * 13) * Math.sin(t * 4.7 + 1))
+      : state === 'listening' ? 0.12 : 0;
+    mouthOpen += (target - mouthOpen) * 0.35;
+    const o = mouthOpen, mx = look.x * 6, my = 200 + look.y * 5 + bob;
+    mouth.setAttribute('d', `M${118 + mx} ${my} Q${150 + mx} ${my + 9 + o * 38} ${182 + mx} ${my} Q${150 + mx} ${my + 4 + o * 10} ${118 + mx} ${my} Z`);
+
+    ring.setAttribute('r', (138 + (state === 'listening' ? Math.sin(t * 6) * 4 : state === 'speaking' ? o * 4 : 0)).toFixed(1));
+    ring2.setAttribute('transform', `rotate(${(t * (state === 'thinking' ? 160 : 12)) % 360} 150 150)`);
+
+    if (state === 'listening' && Date.now() > followUpUntil && !busy && !speaking) setState(baseState());
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // ---------- chime ----------
+  let actx;
+  function chime() {
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      const o = actx.createOscillator(), g = actx.createGain(), n = actx.currentTime;
+      o.frequency.setValueAtTime(880, n); o.frequency.exponentialRampToValueAtTime(1320, n + 0.12);
+      g.gain.setValueAtTime(0.0001, n); g.gain.exponentialRampToValueAtTime(0.15, n + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, n + 0.25);
+      o.connect(g).connect(actx.destination); o.start(n); o.stop(n + 0.3);
+    } catch {}
+  }
+
+  // ---------- speech out ----------
+  let voices = [];
+  function loadVoices() {
+    voices = speechSynthesis.getVoices();
+    const sel = $('#s-voice'); sel.innerHTML = '<option value="">Default</option>';
+    voices.filter(v => /^(en|hi)/i.test(v.lang)).forEach(v => {
+      const op = document.createElement('option'); op.value = v.name; op.textContent = `${v.name} (${v.lang})`;
+      if (v.name === cfg.voice) op.selected = true; sel.appendChild(op);
+    });
+  }
+  if ('speechSynthesis' in window) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
+
+  function clean(s) { return s.replace(/[*_#`>]/g, '').replace(/\s+/g, ' ').trim(); }
+  function speak(text) {
+    text = clean(text);
+    if (!text || !('speechSynthesis' in window)) return;
+    speaking = true; speakQueue++; stopRec();
+    const u = new SpeechSynthesisUtterance(text);
+    const v = voices.find(v => v.name === cfg.voice);
+    if (v) u.voice = v; else u.lang = cfg.lang;
+    u.rate = 1.03;
+    u.onstart = () => setState('speaking');
+    u.onend = u.onerror = () => { speakQueue = Math.max(0, speakQueue - 1); if (speakQueue === 0) afterSpeaking(); };
+    speechSynthesis.speak(u);
+  }
+  function afterSpeaking() {
+    if (busy || speakQueue > 0) return;
+    speaking = false;
+    followUpUntil = Date.now() + FOLLOW_UP_MS;   // conversation mode: no wake word needed for a few seconds
+    setState('listening');
+    startRec();
+  }
+  function stopTalking() {
+    if (abortCtl) abortCtl.abort();
+    try { speechSynthesis.cancel(); } catch {}
+    speakQueue = 0; speaking = false; busy = false;
+  }
+
+  // ---------- speech in ----------
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let rec = null, recActive = false, wantListening = false;
+  function startRec() {
+    if (!SR || !wantListening || recActive || speaking || busy) return;
+    rec = new SR();
+    rec.lang = cfg.lang; rec.continuous = true; rec.interimResults = true;
+    rec.onresult = e => {
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) handleHeard(r[0].transcript); else interim += r[0].transcript;
+      }
+      if (interim && isAwake()) caption(interim, '');
+    };
+    rec.onerror = e => {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { wantListening = false; showError('Microphone blocked — allow it in browser settings, or type below.'); }
+    };
+    rec.onend = () => { recActive = false; if (wantListening && !speaking && !busy) setTimeout(startRec, 300); };
+    try { rec.start(); recActive = true; } catch {}
+  }
+  function stopRec() { recActive = false; try { rec && rec.abort(); } catch {} }
+
+  function isAwake() { return !cfg.wake || Date.now() < followUpUntil; }
+  function attentive() { followUpUntil = Date.now() + FOLLOW_UP_MS; setState('listening'); chime(); startRec(); }
+  function esc(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+  function handleHeard(text) {
+    const t = text.trim();
+    if (!t || busy || speaking) return;
+    if (isAwake()) { ask(t); return; }
+    const m = t.match(new RegExp(`\\b(?:hey|hi|ok|okay|hello)?\\s*${esc(cfg.name)}\\b[,.!?]*`, 'i'));
+    if (m) {
+      const rest = t.slice(m.index + m[0].length).trim();
+      if (rest.length > 2) ask(rest); else attentive();
+    }
+  }
+
+  // ---------- brain (Claude) ----------
+  function systemPrompt() {
+    return `You are ${cfg.name}, a personal AI assistant with the warm, quick-witted manner of a loyal digital butler. ` +
+      `You speak out loud through text-to-speech, so reply in short natural spoken sentences (usually one to three). ` +
+      `Never use markdown, lists, emojis, or URLs unless asked. Reply in the language the user speaks. ` +
+      (cfg.user ? `The user's name is ${cfg.user}. ` : '') +
+      `Current local date and time: ${new Date().toLocaleString()}. ` +
+      `Messages inside [square brackets] are events from your sensors, not words the user said; react to them naturally. ` +
+      `When greeting, be proactive: mention the time of day and ask something relevant, using what you remember from earlier conversation.`;
+  }
+
+  async function ask(text, { event = false } = {}) {
+    if (!cfg.apiKey) { openSettings(); showError('Add your Claude API key in settings first.'); return; }
+    if (busy) return;
+    stopTalking();
+    busy = true; stopRec(); setState('thinking');
+    caption(event ? '' : text, '');
+    history.push({ role: 'user', content: text });
+
+    const msgs = history.slice(-30);
+    while (msgs.length && msgs[0].role !== 'user') msgs.shift();
+
+    abortCtl = new AbortController();
+    let full = '', pending = '';
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST', signal: abortCtl.signal,
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': cfg.apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({ model: cfg.model, max_tokens: 600, system: systemPrompt(), messages: msgs, stream: true })
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(res.status === 401 ? 'API key was rejected — check it in settings.' : `API error ${res.status}: ${body.slice(0, 160)}`);
+      }
+      const reader = res.body.getReader(), dec = new TextDecoder();
+      let buf = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let idx;
+        while ((idx = buf.indexOf('\n\n')) >= 0) {
+          const chunk = buf.slice(0, idx); buf = buf.slice(idx + 2);
+          const line = chunk.split('\n').find(l => l.startsWith('data:'));
+          if (!line) continue;
+          let ev; try { ev = JSON.parse(line.slice(5)); } catch { continue; }
+          if (ev.type === 'error') throw new Error(ev.error?.message || 'Stream error');
+          if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
+            full += ev.delta.text; pending += ev.delta.text;
+            caption(event ? '' : text, full);
+            let m;   // speak each finished sentence immediately for low latency
+            while ((m = pending.match(/^([\s\S]*?[.!?\n])\s+/))) { speak(m[1]); pending = pending.slice(m[0].length); }
+          }
+        }
+      }
+      if (pending.trim()) speak(pending);
+      history.push({ role: 'assistant', content: full || '…' });
+      store.set('history', history.slice(-60));
+    } catch (e) {
+      history.pop();   // drop the unanswered user turn
+      if (e.name !== 'AbortError') showError(e.message);
+    } finally {
+      busy = false; abortCtl = null;
+      if (speakQueue === 0 && state !== 'error') afterSpeaking();
+      else if (speakQueue === 0) { wantListening && startRec(); }
+    }
+  }
+
+  // ---------- eyes (camera presence) ----------
+  const cam = $('#cam');
+  let camOn = false, detector = null, present = false, presentSince = 0, lastSeen = 0, greetedThisVisit = false, camTimer = null;
+  let lastGreet = store.get('lastGreet', 0);
+  const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+
+  async function startCamera() {
+    if (camOn || !navigator.mediaDevices) return;
+    try {
+      const vision = await import(MP + '/vision_bundle.mjs');
+      const files = await vision.FilesetResolver.forVisionTasks(MP + '/wasm');
+      detector = await vision.FaceDetector.createFromOptions(files, {
+        baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite' },
+        runningMode: 'VIDEO'
+      });
+      cam.srcObject = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 320, height: 240 }, audio: false });
+      await cam.play();
+      camOn = true;
+      camTimer = setInterval(detect, 200);
+      if (state === 'idle') setState(baseState());
+    } catch (e) {
+      console.warn('Camera unavailable', e);
+      statusEl.textContent = 'Camera unavailable — voice still works.';
+    }
+  }
+  function stopCamera() {
+    clearInterval(camTimer); camOn = false; present = false;
+    try { cam.srcObject && cam.srcObject.getTracks().forEach(t => t.stop()); } catch {}
+    cam.srcObject = null;
+    if (state === 'sleeping') setState('idle');
+  }
+  function detect() {
+    if (!detector || cam.readyState < 2) return;
+    let res; try { res = detector.detectForVideo(cam, performance.now()); } catch { return; }
+    const f = res.detections && res.detections[0], now = Date.now();
+    if (f) {
+      const b = f.boundingBox;
+      const cx = (b.originX + b.width / 2) / cam.videoWidth, cy = (b.originY + b.height / 2) / cam.videoHeight;
+      lookTarget = { x: (0.5 - cx) * 2, y: (cy - 0.5) * 1.6 };   // mirrored, so it looks at you
+      lastFaceAt = performance.now();
+      lastSeen = now;
+      if (!present) { present = true; presentSince = now; if (state === 'sleeping') setState('idle'); }
+      if (!greetedThisVisit && now - presentSince > 1500 && now - lastGreet > GREET_COOLDOWN_MS && !busy && !speaking) {
+        greetedThisVisit = true; lastGreet = now; store.set('lastGreet', now);
+        ask(`[Event: ${cfg.user || 'the user'} just sat down in front of the camera. Greet them and start a short conversation.]`, { event: true });
+      }
+    } else if (present && now - lastSeen > AWAY_MS) {
+      present = false; greetedThisVisit = false;
+      if (state === 'idle') setState('sleeping');
+    }
+  }
+
+  // ---------- settings ----------
+  const dlg = $('#settings');
+  function openSettings() {
+    $('#s-key').value = cfg.apiKey; $('#s-model').value = cfg.model; $('#s-name').value = cfg.name;
+    $('#s-user').value = cfg.user; $('#s-lang').value = cfg.lang; $('#s-wake').checked = cfg.wake; $('#s-cam').checked = cfg.camera;
+    loadVoices(); $('#s-voice').value = cfg.voice;
+    if (!dlg.open) dlg.showModal();
+  }
+  dlg.addEventListener('close', () => {
+    if (dlg.returnValue !== 'save') return;
+    Object.assign(cfg, {
+      apiKey: $('#s-key').value.trim(), model: $('#s-model').value, name: $('#s-name').value.trim() || 'Friday',
+      user: $('#s-user').value.trim(), lang: $('#s-lang').value, voice: $('#s-voice').value,
+      wake: $('#s-wake').checked, camera: $('#s-cam').checked
+    });
+    store.set('cfg', cfg);
+    document.title = cfg.name; $('#startName').textContent = cfg.name;
+    stopRec(); startRec();
+    if (started) { cfg.camera ? startCamera() : stopCamera(); }
+    setState(baseState());
+  });
+  $('#s-clear').onclick = () => { history = []; store.set('history', []); caption('', 'Memory cleared.'); };
+  $('#gear').onclick = openSettings;
+
+  // ---------- interaction ----------
+  $('#face').addEventListener('click', () => {
+    if (!started) return boot();
+    if (busy || speaking) stopTalking();
+    attentive();
+  });
+  $('#textform').addEventListener('submit', e => {
+    e.preventDefault();
+    const v = $('#textin').value.trim();
+    if (!v) return;
+    $('#textin').value = '';
+    if (!started) boot();
+    ask(v);
+  });
+
+  function boot() {
+    if (started) return;
+    started = true;
+    $('#start').remove();
+    try { speechSynthesis.speak(new SpeechSynthesisUtterance('')); } catch {}   // unlock audio on mobile
+    try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); } catch {}
+    wantListening = true;
+    if (!SR) statusEl.textContent = 'Voice input not supported in this browser — try Chrome. You can still type.';
+    startRec();
+    if (cfg.camera) startCamera();
+    if (!cfg.apiKey) openSettings();
+    setState(baseState());
+  }
+  $('#start').addEventListener('click', boot);
+
+  document.title = cfg.name; $('#startName').textContent = cfg.name;
+  setState('idle');
+})();
+</script>
+</body>
+</html>
